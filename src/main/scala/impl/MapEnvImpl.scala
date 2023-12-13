@@ -27,8 +27,14 @@ given mapEnvImpl[V]: EnvOps[MapEnv[V], V] with
     }
  
     def findItem(name: String): Option[V] = {
-      env.frames.headOption match {
-        case Some(value) => Option(value(name))
-        case None => Option.empty[V]
+      def searchItem(frames: List[Map[String, V]], name: String): Option[V] = frames match {
+        case head :: tail => {
+          head.get(name) match {
+            case Some(value) => Option(value)
+            case None => searchItem(tail, name)
+          }
+        }
+        case Nil => throw new Error(s"No such item: ${name}")// Option.empty[V]
       }
+      searchItem(env.frames, name)
     }

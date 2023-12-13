@@ -35,14 +35,14 @@ given exprInterpreter[Env, V](using
     case EFst(expr) => {
       val value = lazyOps.evaluate(eval(env, expr))
       value match {
-        case (VCons(head, tail)) => lazyOps.toLazy(head)
+        case VCons(head, tail) => lazyOps.toLazy(head)
         case _ => throw new Exception("EFst type error")
       }
     }
     case ESnd(expr) => {
       val value = lazyOps.evaluate(eval(env, expr))
       value match {
-        case (VCons(head, tail)) => lazyOps.toLazy(tail)
+        case VCons(head, tail) => lazyOps.toLazy(tail)
         case _ => throw new Exception("EFst type error")
       }
     }
@@ -78,24 +78,55 @@ given exprInterpreter[Env, V](using
       val value = lazyOps.evaluate(eval(env, expr))
       value match {
         case VCons(x, y) => lazyOps.toLazy(VInt(1))
+        case VNil => lazyOps.toLazy(VInt(1))
         case _ => lazyOps.toLazy(VInt(0))
       }
     }
-    // case ESubstr(e: Expr, start: Expr, end: Expr)
-    // case ELen(e: Expr)
+    case ESubstr(expr: Expr, startPoint: Expr, endPoint: Expr) => {
+      val value = lazyOps.evaluate(eval(env, expr))
+      val startValue = lazyOps.evaluate(eval(env, startPoint))
+      val endValue = lazyOps.evaluate(eval(env, endPoint))
+      (value, startValue, endValue) match {
+        case (VString(mainString), VInt(starts), VInt(ends)) => {
+          lazyOps.toLazy(VString(mainString.substring(starts, ends)))
+        }
+        case _ => throw new Error("ESubStr type Error")
+      }
+    }
+    case ELen(expr: Expr) => {
+      def consCounter(cons: Val, counter: Int): Int = cons match {
+        case VCons(head, tail) => {
+          consCounter(tail, counter + 1)
+        }
+        case _ => counter
+      }
+      val value = lazyOps.evaluate(eval(env, expr))
+      value match {
+        case VString(value) => lazyOps.toLazy(VInt(value.length))
+        case VCons(head, tail) => lazyOps.toLazy(VInt(consCounter(value, 0)))
+        case VNil => lazyOps.toLazy(VInt(0))
+        case _ => {
+          print("ELen error: ")
+          throw new Error("ELen type Error")
+        }
+      }
+    }
     case EIf(cond: Expr, ifTrue: Expr, ifFalse: Expr) => {
       val result = lazyOps.evaluate(eval(env, cond))
       result match {
         case VInt(value) => value match {
-          case 1 => eval(env, ifTrue)
           case 0 => eval(env, ifFalse)
-          case _ => throw new Error("EIf cond type Error")
+          case _ => eval(env, ifTrue)
+        }
+        case VFloat(value) => value match {
+          case 0.0 => eval(env, ifFalse)
+          case _ => eval(env, ifTrue)
         }
         case _ => throw new Error("EIf type error")
       }
     }
     case ELet(bs: List[Bind], e: Expr) => {
-      val newEnv = envOps.pushEmptyFrame
+      val newEnv = env.pushEmptyFrame
       @tailrec
       def setEnv(innerEnv: Env, bs: List[Bind]): Env = {
         bs match {
@@ -105,13 +136,13 @@ given exprInterpreter[Env, V](using
                 setEnv(innerEnv.setItem(f, lazyOps.toLazy(VFunc[Env](f, params, body, innerEnv))), remainder)
               }
               case BVal(x: String, e: Expr) => {
-                print("name: ")
-                println(x)
-                setEnv(innerEnv.setItem(x, eval(innerEnv, e)), remainder)
+                // 일반 val도 lazy val로 취급하면 일단 되긴 함. 근데 이게 맞나? ㅅㅂ
+                // setEnv(innerEnv.setItem(x, eval(innerEnv, e)), remainder)
+                setEnv(innerEnv.setItem(x, lazyOps.pend(() => lazyOps.evaluate(eval(innerEnv, e)))), remainder)
               }
               case BLVal(x: String, e: Expr) => {
                 // TODO : make this lazy
-                setEnv(innerEnv.setItem(x, eval(innerEnv, e)), remainder)
+                setEnv(innerEnv.setItem(x, lazyOps.pend(() => lazyOps.evaluate(eval(innerEnv, e)))), remainder)
               }
               // case BDefIO(
               //   f: String,
@@ -136,34 +167,45 @@ given exprInterpreter[Env, V](using
           case Nil => innerEnv
         }
       }
-      eval(setEnv(newEnv, bs), e)
+      val goEnv = setEnv(newEnv, bs);
+      // in this point, all value has been recorded.
+      eval(goEnv, e)
+      // eval(setEnv(newEnv, bs), e)
     }
     case EApp(f, args) => {
       @tailrec
-      def getFunctionEnv(paramsAndArgs: List[(Arg, Expr)], funcEnv: Env): Env = {
+      def getFunctionEnv(paramsAndArgs: List[(Arg, Expr)], refEnv: Env, funcEnv: Env): Env = {
         paramsAndArgs match {
           case (param, argValue) :: remainder => {
             param match {
               case ANName(x) => {
-                getFunctionEnv(remainder, funcEnv.setItem(x, eval(funcEnv, EName(x)))) 
+                getFunctionEnv(remainder, refEnv, funcEnv.setItem(x, lazyOps.pend(() => lazyOps.evaluate(eval(refEnv, argValue))))) 
               }
               case AVName(x) => {
-                getFunctionEnv(remainder, funcEnv.setItem(x, eval(funcEnv, argValue)))
+                getFunctionEnv(remainder, refEnv, funcEnv.setItem(x, eval(refEnv, argValue)))
               }
             }
           }
           case Nil => funcEnv
         }
       }
+      @tailrec
+      def runVFunc(funcName: String, params: List[Arg], body: Expr, funcEnv: Env) = {
+        val newInnerFuncEnv = getFunctionEnv(params zip args, env, funcEnv)   // TODO: 검증하기. (funcEnv가 뭐하는건지 아직 잘 모르겠음)
+        val considerRecursiveFuncEnv = newInnerFuncEnv.setItem(funcName, lazyOps.toLazy(VFunc[Env](funcName, params, body, newInnerFuncEnv)))
+        
+        
+        // lazyOps.toLazy(lazyOps.evaluate(eval(considerRecursiveFuncEnv, body)))
+      }
       lazyOps.evaluate(eval(env, f)) match {
-        case VFunc(funcName: String, params:List[Arg], body: Expr, funcEnv: Env) => {
-          val newInnerFuncEnv = getFunctionEnv(params zip args, funcEnv)
-          val considerRecursiveFuncEnv = newInnerFuncEnv.setItem(funcName, lazyOps.toLazy(VFunc[Env](funcName, params, body, newInnerFuncEnv)))
-          lazyOps.toLazy(lazyOps.evaluate(eval(considerRecursiveFuncEnv, body)))
+        case VFunc(funcName: String, params: List[Arg], body: Expr, funcEnv: Env) => {
+          runVFunc(funcName, params, body, funcEnv);
+          // val newInnerFuncEnv = getFunctionEnv(params zip args, env, funcEnv)   // TODO: 검증하기. (funcEnv가 뭐하는건지 아직 잘 모르겠음)
+          // val considerRecursiveFuncEnv = newInnerFuncEnv.setItem(funcName, lazyOps.toLazy(VFunc[Env](funcName, params, body, newInnerFuncEnv)))
+          
+          // lazyOps.toLazy(lazyOps.evaluate(eval(considerRecursiveFuncEnv, body)))
         }
         case _ => {
-          println(lazyOps.evaluate(eval(env, f)))
-          // lazyOps.toLazy(other)
           throw new Exception("EApp type error")
         }
       }
@@ -216,7 +258,9 @@ given exprInterpreter[Env, V](using
       val leftValue = lazyOps.evaluate(eval(env, left))
       val rightValue = lazyOps.evaluate(eval(env, right))
       (leftValue, rightValue) match {
-        case (VInt(leftValue), VInt(rightValue)) => lazyOps.toLazy(VInt(leftValue % rightValue))
+        case (VInt(leftValue), VInt(rightValue)) => {
+          lazyOps.toLazy(VInt(leftValue % rightValue))
+        }
         case _ => throw new Error("EMod type error")
       }
     }
@@ -262,7 +306,6 @@ given exprInterpreter[Env, V](using
   extension (e: Expr)
     def evaluate(): Try[V] = {
       try {
-        println(e)
         Success(eval(envOps.emptyEnv(), e))
       } catch {
         case e: Exception => Failure(e)

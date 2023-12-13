@@ -13,5 +13,6 @@ given LazyOps[Val, LazyVal[Val]] with
   extension (value: LazyVal[Val]) 
     def evaluate: Val = value match {
       case LVLazy(v) => v()
+      case LVVal(v) => v
     }
       // LazyVal 내부의 계산을 실행하고 결과를 반환
