@@ -18,57 +18,20 @@ given exprInterpreter[Env, V](using
 ): Interpreter[Expr, V] with
   
   private def eval(env: Env, e: Expr): V = {
+
     @tailrec
-    def appHandler(f:Expr, args: List[Expr]): V = {
-        @tailrec
-        def getFunctionEnv(paramsAndArgs: List[(Arg, Expr)], refEnv: Env, funcEnv: Env): Env = {
-          paramsAndArgs match {
-            case (param, argValue) :: remainder => {
-              param match {
-                case ANName(x) => {
-                  getFunctionEnv(remainder, refEnv, funcEnv.setItem(x, lazyOps.pend(() => lazyOps.evaluate(eval(refEnv, argValue))))) 
-                }
-                case AVName(x) => {
-                  getFunctionEnv(remainder, refEnv, funcEnv.setItem(x, eval(refEnv, argValue)))
-                }
-              }
-            }
-            case Nil => funcEnv
-          }
-        }
-        lazyOps.evaluate(eval(env, f)) match {
-          case VFunc(funcName: String, params: List[Arg], body: Expr, funcEnv: Env) => {
-              
-            val newInnerFuncEnv = getFunctionEnv(params zip args, env, funcEnv)   // TODO: 검증하기. (funcEnv가 뭐하는건지 아직 잘 모르겠음)
-            val considerRecursiveFuncEnv = newInnerFuncEnv.setItem(funcName, lazyOps.toLazy(VFunc[Env](funcName, params, body, newInnerFuncEnv)))
-            
-            body match {
-              case EApp(insideF, insideArgs) => {
-                appHandler(insideF, insideArgs);
-              }
-              case _ => {
-                lazyOps.toLazy(lazyOps.evaluate(eval(considerRecursiveFuncEnv, body)))
-              }
-            }
-          }
-          case _ => {
-            throw new Exception("EApp type error")
-          }
-        }
-      }
-    e match {
-      case EInt(value) => lazyOps.toLazy(VInt(value))
-      case EFloat(value) => lazyOps.toLazy(VFloat(value))
-      case EString(value) => lazyOps.toLazy(VString(value))
-      // need test
+    def fullHandler(env: Env, e: Expr, cont: V => V): V = e match {
+      case EInt(value) => cont(lazyOps.toLazy(VInt(value)))
+      case EFloat(value) => cont(lazyOps.toLazy(VFloat(value)))
+      case EString(value) => cont(lazyOps.toLazy(VString(value)))
       case EName(x) => env.findItem(x) match {
         case Some(value) => value
         case None => throw new Exception("name not founded")
       }
       case ENil => lazyOps.toLazy(VNil)
       case ECons(head, tail) => {
-        val firstValue = lazyOps.evaluate(eval(env, head))
-        val secondValue = lazyOps.evaluate(eval(env, tail))
+        val firstValue = cont(lazyOps.evaluate(eval(env, head)))
+        val secondValue = cont(lazyOps.evaluate(eval(env, tail)))
         lazyOps.toLazy(VCons(firstValue, secondValue))
       }
       case EFst(expr) => {
@@ -211,7 +174,37 @@ given exprInterpreter[Env, V](using
         eval(goEnv, e)
         // eval(setEnv(newEnv, bs), e)
       }
-      case EApp(f, args) => appHandler(f, args);
+      case EApp(f, args) => {
+        @tailrec
+        def getFunctionEnv(paramsAndArgs: List[(Arg, Expr)], refEnv: Env, funcEnv: Env): Env = {
+          paramsAndArgs match {
+            case (param, argValue) :: remainder => {
+              param match {
+                case ANName(x) => {
+                  getFunctionEnv(remainder, refEnv, funcEnv.setItem(x, lazyOps.pend(() => lazyOps.evaluate(eval(refEnv, argValue))))) 
+                }
+                case AVName(x) => {
+                  getFunctionEnv(remainder, refEnv, funcEnv.setItem(x, eval(refEnv, argValue)))
+                }
+              }
+            }
+            case Nil => funcEnv
+          }
+        }
+        // eval -> fullHandler, but how ?
+        lazyOps.evaluate(eval(env, f)) match {
+          case VFunc(funcName: String, params: List[Arg], body: Expr, funcEnv: Env) => {
+              
+            val newInnerFuncEnv = getFunctionEnv(params zip args, env, funcEnv)   // TODO: 검증하기. (funcEnv가 뭐하는건지 아직 잘 모르겠음)
+            val considerRecursiveFuncEnv = newInnerFuncEnv.setItem(funcName, lazyOps.toLazy(VFunc[Env](funcName, params, body, newInnerFuncEnv)))
+            
+            fullHandler(considerRecursiveFuncEnv, body, cont) // 일단 임시로 cont 그대로 넣기, 나중에 넣을거임
+          }
+          case _ => {
+            throw new Exception("EApp type error")
+          }
+        }
+      };
       case EAdd(left, right) => {
         val leftValue = lazyOps.evaluate(eval(env, left))
         val rightValue = lazyOps.evaluate(eval(env, right))
@@ -303,6 +296,7 @@ given exprInterpreter[Env, V](using
         }
       }
     }
+    fullHandler(env, e, (value) => (value));
   }
 
   extension (e: Expr)
