@@ -21,9 +21,7 @@ given exprInterpreter[Env, V](using
 
 
     @tailrec
-    def fullHandler(env: Env, e: Expr): V = {
-      println(e)
-       e match {
+    def fullHandler(env: Env, e: Expr): V = e match {
       case EInt(value) => lazyOps.toLazy(VInt(value))
       case EFloat(value) => lazyOps.toLazy(VFloat(value))
       case EString(value) => lazyOps.toLazy(VString(value))
@@ -111,7 +109,6 @@ given exprInterpreter[Env, V](using
           case VCons(head, tail) => lazyOps.toLazy(VInt(consCounter(value, 0)))
           case VNil => lazyOps.toLazy(VInt(0))
           case _ => {
-            print("ELen error: ")
             throw new Error("ELen type Error")
           }
         }
@@ -154,10 +151,7 @@ given exprInterpreter[Env, V](using
                   params: List[Arg.AVName],
                   actions: List[IOAction],
                   returns: Expr
-                ) => {
-                  println(s"register VIOAction\nf: ${f}\nresult: ${VIOAction(f, params, actions, returns, innerEnv)}")
-                  setEnv(innerEnv.setItem(f, VIOAction(f, params, actions, returns, innerEnv).toLazy), remainder)
-                }
+                ) => setEnv(innerEnv.setItem(f, VIOAction(f, params, actions, returns, innerEnv).toLazy), remainder)
               }
             }
             case Nil => innerEnv
@@ -170,7 +164,6 @@ given exprInterpreter[Env, V](using
         // eval(setEnv(newEnv, bs), e)
       }
       case EApp(f, args) => {
-        print(f)
         @tailrec
         def getFunctionEnv(paramsAndArgs: List[(Arg, Expr)], refEnv: Env, funcEnv: Env): Env = {
           paramsAndArgs match {
@@ -204,26 +197,19 @@ given exprInterpreter[Env, V](using
             fullHandler(considerRecursiveFuncEnv, body) // 일단 임시로 cont 그대로 넣기, 나중에 넣을거임
           }
           case VIOAction(actionName: String, params: List[Arg.AVName], actions: List[IOAction], returns: Expr, funcEnv: Env) => {
-            println("invoked VIOAction")
             val evaluatedVals: List[Val] =
               for arg <- args
                 yield lazyOps.evaluate(eval(env, arg))
-            println("End VIOAction?")
 
             VIOThunk(VIOAction(actionName, params, actions, returns, funcEnv), evaluatedVals).toLazy
             // val newInnerFuncEnv = getFunctionEnv(params zip args, env, funcEnv)
             // val considerRecursiveFuncEnv = newInnerFuncEnv.setItem(actionName, lazyOps.toLazy(VIOAction[Env](actionName, params, actions, returns, newInnerFuncEnv)))
             // fullHandler(considerRecursiveFuncEnv, returns, cont)
           }
-          case something => {
-            println(something)
-            throw new Exception("EApp type error")
-          }
+          case _ => throw new Exception("EApp type error")
         }
       };
       case EAdd(left, right) => {
-        println(s"left:${left}")
-        println(s"right:${right}")
         val leftValue = eval(env, left).evaluate
         val rightValue = eval(env, right).evaluate
         (leftValue, rightValue) match {
@@ -232,10 +218,7 @@ given exprInterpreter[Env, V](using
           case (VFloat(leftValue), VInt(rightValue)) => lazyOps.toLazy(VFloat(leftValue + rightValue))
           case (VFloat(leftValue), VFloat(rightValue)) => lazyOps.toLazy(VFloat(leftValue + rightValue))
           case (VString(leftValue), VString(rightValue)) => lazyOps.toLazy(VString(leftValue + rightValue))
-          case remaining => {
-            println(s"!!remaining!! : ${remaining}")
-            throw new Exception("EAdd type error")
-          }
+          case remaining => throw new Exception("EAdd type error")
         }
       }
       case ESub(left, right) => {
@@ -316,7 +299,7 @@ given exprInterpreter[Env, V](using
           case (VFloat(leftValue), VFloat(rightValue)) => lazyOps.toLazy(VInt(if (leftValue > rightValue) 1 else 0))
         }
       }
-    }}
+    }
     fullHandler(env, e);
   }
 
@@ -336,85 +319,98 @@ given exprInterpreter[Env, V](using
     ): Try[V] = {
       try {
         val result = eval(envOps.emptyEnv(), e).evaluate
-        println("result:")
-        println(result); // 지울 것
         result match {
           case VIOThunk[Env](action, args) =>
           {
-            def fetchLine(): Option[String] = {
-              println("invoked")
-              readOps.readChar(reader)() match {
-                case Some(value) => {
-                // what about "\r\n"?
-                  if (value == '\r' || value == '\n'){
-                    None;
-                  }
-                  else {
-                    val tails = fetchLine() match {
-                      case Some(tailString) => tailString
-                      case None => ""
+            def innerFunction(action: VIOAction[Env], args: List[Val]): V = {
+              def fetchLine(): Option[String] = {
+                readOps.readChar(reader)() match {
+                  case Some(value) => {
+                  // what about "\r\n"?
+                    if (value == '\r' || value == '\n'){
+                      None;
                     }
-                    Option(value.toString + tails)
+                    else {
+                      val tails = fetchLine() match {
+                        case Some(tailString) => tailString
+                        case None => ""
+                      }
+                      Option(value.toString + tails)
+                    }
                   }
+                  case None => None
                 }
-                case None => None
               }
-            }
 
-            @tailrec
-            def printString(targetString: String): Unit = {
-              if (targetString.nonEmpty){
-                writeOps.writeChar(writer)(targetString.head)
-                printString(targetString.tail)
-              }
-            }
-            def runActions(env: Env, actions: List[IOAction]): Env = actions match {
-              case IORun(x: String, e: Expr) :: remainder => {
-                println(s"IORun: ${e}")
-                val newEnv = env.setItem(x, eval(env, e).evaluate.toLazy);
-                runActions(newEnv, remainder);
-              }
-              case IOReadLine(x: String) :: remainder => {
-                fetchLine() match {
-                  case Some(fetchedString) => {
-                    val newEnv = env.setItem(x, VString(fetchedString).toLazy);
-                    runActions(newEnv, remainder);
-                  }
-                  case None => throw new Error("Empty Line Input");
+              @tailrec
+              def printString(targetString: String): Unit = {
+                if (targetString.nonEmpty){
+                  writeOps.writeChar(writer)(targetString.head)
+                  printString(targetString.tail)
                 }
               }
-              case IOPrint(e: Expr) :: remainder => {
-                def evalStringPrinter(evaluatedValue: Val): Unit = {
-                  evaluatedValue match {
-                    case VNil                         => printString("Nil")
-                    case VInt(value)                  => printString(value.toString)
-                    case VFloat(value)                => printString(value.toString)
-                    case VString(stringValue)         => printString(stringValue)
-                    case VCons(head: Val, tail: Val)  => {
-                      printString("(")
-                      evalStringPrinter(head)
-                      printString(",")
-                      evalStringPrinter(tail)
-                      printString(")")
+              def runActions(env: Env, actions: List[IOAction]): Env = actions match {
+                case IORun(x: String, e: Expr) :: remainder => {
+                  val target = eval(env, e).evaluate
+                  
+                  target match {
+                    case VIOThunk(action: VIOAction[Env], args: List[Val]) => {
+                      val newValue = innerFunction(action, args)
+                      val newEnv = env.setItem(x, newValue);
+                      runActions(newEnv, remainder);
+                    }
+                    case _ => {
+                      val newEnv = env.setItem(x, target.toLazy)
+                      runActions(newEnv, remainder);
                     }
                   }
+                  
                 }
-                evalStringPrinter(eval(env, e).evaluate);
-                runActions(env, remainder);
+                case IOReadLine(x: String) :: remainder => {
+                  fetchLine() match {
+                    case Some(fetchedString) => {
+                      val newEnv = env.setItem(x, VString(fetchedString).toLazy);
+                      runActions(newEnv, remainder);
+                    }
+                    case None =>  {
+                      val newEnv = env.setItem(x, VNil.toLazy);
+                      runActions(newEnv, remainder);
+                    } // throw new Error("Empty Line Input");
+                  }
+                }
+                case IOPrint(e: Expr) :: remainder => {
+                  def evalStringPrinter(evaluatedValue: Val): Unit = {
+                    evaluatedValue match {
+                      case VNil                         => printString("Nil")
+                      case VInt(value)                  => printString(value.toString)
+                      case VFloat(value)                => printString(value.toString)
+                      case VString(stringValue)         => printString(stringValue)
+                      case VCons(head: Val, tail: Val)  => {
+                        printString("(")
+                        evalStringPrinter(head)
+                        printString(",")
+                        evalStringPrinter(tail)
+                        printString(")")
+                      }
+                    }
+                  }
+                  evalStringPrinter(eval(env, e).evaluate);
+                  runActions(env, remainder);
+                }
+                case Nil => env
               }
-              case Nil => env
-            }
-            def registerArgs(env: Env, registerParams: List[(Arg.AVName, Val)]): Env = registerParams match {
-              case (Arg.AVName(name), value) :: remainder => {
-                println(s"try to register ${name}!")
-                val newEnv = env.setItem(name, value.toLazy)
-                registerArgs(newEnv, remainder)
+              def registerArgs(env: Env, registerParams: List[(Arg.AVName, Val)]): Env = registerParams match {
+                case (Arg.AVName(name), value) :: remainder => {
+                  val newEnv = env.setItem(name, value.toLazy)
+                  registerArgs(newEnv, remainder)
+                }
+                case Nil => env;
               }
-              case Nil => env;
+              val newEnv = registerArgs(action.env, action.params zip args)
+              val finalEnv = runActions(newEnv, action.actions)
+              eval(finalEnv, action.returns)
             }
-            val newEnv = registerArgs(action.env, action.params zip args)
-            val finalEnv = runActions(newEnv, action.actions)
-            Success(eval(finalEnv, action.returns))
+            Success(innerFunction(action, args))
           }
           case r => Success(r.toLazy)
         }

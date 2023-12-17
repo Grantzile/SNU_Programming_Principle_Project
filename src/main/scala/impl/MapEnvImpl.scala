@@ -27,6 +27,7 @@ given mapEnvImpl[V]: EnvOps[MapEnv[V], V] with
     }
  
     def findItem(name: String): Option[V] = {
+      @tailrec
       def searchItem(frames: List[Map[String, V]], name: String): Option[V] = frames match {
         case head :: tail => {
           head.get(name) match {
