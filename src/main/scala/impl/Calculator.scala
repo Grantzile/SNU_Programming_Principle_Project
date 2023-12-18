@@ -112,20 +112,11 @@ val calculator: String =
     |   (def splitNumericAndOperator ( line )
     |       (let
     |           (val firstChar (substr line 0 1))
-    |           (val isOperator (app checkIsOperator firstChar))
     |           (val isNumericValue (app getNumericValue firstChar))
-    |           (val isMinus (= isOperator "-"))
-    |           (val sign (* -1 (- (* isMinus 2) 1)))
-    |           (val isAvailableStart (app customOr (* (if (nil? isOperator) 0 1) isMinus) isNumericValue))
-    |           (val leftString (if ( > (len line) 1)
-    |               (substr line 1 (len line))
-    |               ""
-    |           ))
+    |           (val sign 1)
+    |           (val isAvailableStart (+ 1 isNumericValue))
     |           (val result (if isAvailableStart
-    |               (if (nil? isOperator)
-    |                   (app getIntAndContinue line sign splitNumericAndOperator)
-    |                   (app getIntAndContinue leftString sign splitNumericAndOperator)
-    |               )
+    |               (app getIntAndContinue line sign splitNumericAndOperator)
     |               "parse error"
     |           ))
     |           result
@@ -193,13 +184,13 @@ val calculator: String =
     |       ))
     |       (runIO printValue (if result 
     |           (app splitNumericAndOperator inputString)
-    |           ""
+    |           "parse error"
     |       ))
-    |       (runIO crossProcessed (if result 
+    |       (runIO crossProcessed (if result
     |           (app crossProcess printValue 1 "*" )
     |           ""
     |       ))
-    |       (runIO addSubProcessed (if result 
+    |       (runIO addSubProcessed (if result
     |           (app addSubProcess crossProcessed 0 "+" )
     |           ""
     |       ))
