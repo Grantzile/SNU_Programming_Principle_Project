@@ -27,14 +27,14 @@ val calculator: String =
     |   )
     |   (def matchOperator ( tester stringList )
     |       (let
-    |           (val thisValue (if (app getValue target (fst stringList) 1)
+    |           (val thisValue (if (app getValue tester (fst stringList) 1)
     |               (fst stringList)
     |               nil
     |           ))
     |           (if (nil? thisValue)
     |               (if (nil? (snd stringList))
     |                   nil
-    |                   (app matchOperator (snd stringList))
+    |                   (app matchOperator tester (snd stringList))
     |               )
     |               thisValue
     |           )
@@ -48,8 +48,8 @@ val calculator: String =
     |   )
     |   (def checkIsOperator ( target )
     |       (let 
-    |           (val operator (app matchAndGetValue target operatorList operatorList))
-    |           ( if ( = 0 operator)
+    |           (val operator (app matchOperator target operatorList))
+    |           ( if ( nil? operator)
     |               nil
     |               operator
     |           )
