@@ -25,6 +25,21 @@ val calculator: String =
     |           )
     |       )
     |   )
+    |   (def matchOperator ( tester stringList )
+    |       (let
+    |           (val thisValue (if (app getValue target (fst stringList) 1)
+    |               (fst stringList)
+    |               nil
+    |           ))
+    |           (if (nil? thisValue)
+    |               (if (nil? (snd stringList))
+    |                   nil
+    |                   (app matchOperator (snd stringList))
+    |               )
+    |               thisValue
+    |           )
+    |       )
+    |   )
     |   (def getNumericValue ( target )
     |       ( if ( = 0 (app matchAndGetValue target numericStringList numericStringMapList))
     |           nil
