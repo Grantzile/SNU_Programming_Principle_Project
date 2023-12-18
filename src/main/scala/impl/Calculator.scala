@@ -114,7 +114,7 @@ val calculator: String =
     |           (val firstChar (substr line 0 1))
     |           (val isNumericValue (app getNumericValue firstChar))
     |           (val sign 1)
-    |           (val isAvailableStart (+ 1 isNumericValue))
+    |           (val isAvailableStart (if (nil? isNumericValue) 0 1))
     |           (val result (if isAvailableStart
     |               (app getIntAndContinue line sign splitNumericAndOperator)
     |               "parse error"
@@ -184,17 +184,21 @@ val calculator: String =
     |       ))
     |       (runIO printValue (if result 
     |           (app splitNumericAndOperator inputString)
-    |           "parse error"
+    |           ""
     |       ))
-    |       (runIO crossProcessed (if result
+    |       (runIO crossProcessed (if (app customOr (- 1 result) (string? printValue))
+    |           ""
     |           (app crossProcess printValue 1 "*" )
-    |           ""
     |       ))
-    |       (runIO addSubProcessed (if result
-    |           (app addSubProcess crossProcessed 0 "+" )
+    |       (runIO addSubProcessed (if (app customOr (- 1 result) (string? printValue))
     |           ""
+    |           (app addSubProcess crossProcessed 0 "+" )
     |       ))
     |       (print addSubProcessed)
+    |       (print (if (= printValue "parse error")
+    |           "parse error"
+    |           ""
+    |       ))
     |       (print (if result "\n" ""))
     |       result
     |   )
