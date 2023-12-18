@@ -18,15 +18,16 @@ given exprInterpreter[Env, V](using
 ): Interpreter[Expr, V] with
   
   private def eval(env: Env, e: Expr): V = {
-
-
     @tailrec
     def fullHandler(env: Env, e: Expr): V = e match {
       case EInt(value) => lazyOps.toLazy(VInt(value))
       case EFloat(value) => lazyOps.toLazy(VFloat(value))
       case EString(value) => lazyOps.toLazy(VString(value))
       case EName(x) => env.findItem(x) match {
-        case Some(value) => value
+        case Some(value) => {
+          // println(s"find item, ${value.evaluate} with name ${x}\n")
+          value
+        }
         case None => throw new Exception("name not founded")
       }
       case ENil => lazyOps.toLazy(VNil)
@@ -124,7 +125,7 @@ given exprInterpreter[Env, V](using
             case 0.0 => fullHandler(env, ifFalse)
             case _ => fullHandler(env, ifTrue)
           }
-          case _ => throw new Error("EIf type error")
+          case something => throw new Error("EIf type error")
         }
       }
       case ELet(bs: List[Bind], e: Expr) => {
@@ -138,12 +139,9 @@ given exprInterpreter[Env, V](using
                   setEnv(innerEnv.setItem(f, lazyOps.toLazy(VFunc[Env](f, params, body, innerEnv))), remainder)
                 }
                 case BVal(x: String, e: Expr) => {
-                  // 일반 val도 lazy val로 취급하면 일단 되긴 함. 근데 이게 맞나? ㅅㅂ
-                  // setEnv(innerEnv.setItem(x, eval(innerEnv, e)), remainder)
-                  setEnv(innerEnv.setItem(x, lazyOps.pend(() => lazyOps.evaluate(eval(innerEnv, e)))), remainder)
+                  setEnv(innerEnv.setItem(x, eval(innerEnv, e)), remainder)
                 }
                 case BLVal(x: String, e: Expr) => {
-                  // TODO : make this lazy
                   setEnv(innerEnv.setItem(x, lazyOps.pend(() => lazyOps.evaluate(eval(innerEnv, e)))), remainder)
                 }
                 case BDefIO(
@@ -151,17 +149,17 @@ given exprInterpreter[Env, V](using
                   params: List[Arg.AVName],
                   actions: List[IOAction],
                   returns: Expr
-                ) => setEnv(innerEnv.setItem(f, VIOAction(f, params, actions, returns, innerEnv).toLazy), remainder)
+                ) => {
+                  val considerRecursive = innerEnv.setItem(f, VIOAction(f, params, actions, returns, innerEnv).toLazy)
+                  setEnv(innerEnv.setItem(f, VIOAction(f, params, actions, returns, considerRecursive).toLazy), remainder)
+                }
               }
             }
             case Nil => innerEnv
           }
         }
         val goEnv = setEnv(newEnv, bs);
-        // in this point, all value has been recorded.
-        // DEBUG: 안되면 eval로
         fullHandler(goEnv, e)
-        // eval(setEnv(newEnv, bs), e)
       }
       case EApp(f, args) => {
         @tailrec
@@ -180,13 +178,13 @@ given exprInterpreter[Env, V](using
             case Nil => funcEnv
           }
         }
-
-        val function = f match {
-          case EName(funcName) => env.findItem(funcName) match {
+        val functionName = f match {
+          case EName(funcName) => funcName
+          case _ => throw new Error("unexpected function name")
+        }
+        val function = env.findItem(functionName) match {
             case Some(value) => value.evaluate
             case None => throw new Exception("name not founded")
-          }
-          case _ => throw new Error("unexpected function name")
         }
         function match {
           case VFunc(funcName: String, params: List[Arg], body: Expr, funcEnv: Env) => {
@@ -200,8 +198,9 @@ given exprInterpreter[Env, V](using
             val evaluatedVals: List[Val] =
               for arg <- args
                 yield lazyOps.evaluate(eval(env, arg))
-
-            VIOThunk(VIOAction(actionName, params, actions, returns, funcEnv), evaluatedVals).toLazy
+            // For recursive call
+            val considerRecursiveFuncEnv = funcEnv.setItem(functionName, VIOAction[Env](actionName, params, actions, returns, funcEnv).toLazy)
+            VIOThunk(VIOAction(actionName, params, actions, returns, considerRecursiveFuncEnv), evaluatedVals).toLazy
             // val newInnerFuncEnv = getFunctionEnv(params zip args, env, funcEnv)
             // val considerRecursiveFuncEnv = newInnerFuncEnv.setItem(actionName, lazyOps.toLazy(VIOAction[Env](actionName, params, actions, returns, newInnerFuncEnv)))
             // fullHandler(considerRecursiveFuncEnv, returns, cont)
@@ -349,21 +348,31 @@ given exprInterpreter[Env, V](using
                   printString(targetString.tail)
                 }
               }
+
+              // 임시조치 (tailrec 이슈)
+              def resolveVIOThunk(target: Val): V = target match {
+                case VIOThunk(action: VIOAction[Env], args: List[Val]) => {
+                  innerFunction(action, args)
+                }
+                case _ => target.toLazy
+              }
+
               def runActions(env: Env, actions: List[IOAction]): Env = actions match {
                 case IORun(x: String, e: Expr) :: remainder => {
                   val target = eval(env, e).evaluate
-                  
-                  target match {
-                    case VIOThunk(action: VIOAction[Env], args: List[Val]) => {
-                      val newValue = innerFunction(action, args)
-                      val newEnv = env.setItem(x, newValue);
-                      runActions(newEnv, remainder);
-                    }
-                    case _ => {
-                      val newEnv = env.setItem(x, target.toLazy)
-                      runActions(newEnv, remainder);
-                    }
-                  }
+                  val newEnv = env.setItem(x, resolveVIOThunk(target))
+                  runActions(newEnv, remainder)
+                  // target match {
+                  //   case VIOThunk(action: VIOAction[Env], args: List[Val]) => {
+                  //     val newValue = innerFunction(action, args)
+                  //     val newEnv = env.setItem(x, newValue);
+                  //     runActions(newEnv, remainder);
+                  //   }
+                  //   case _ => {
+                  //     val newEnv = env.setItem(x, target.toLazy)
+                  //     runActions(newEnv, remainder);
+                  //   }
+                  // }
                   
                 }
                 case IOReadLine(x: String) :: remainder => {
@@ -380,7 +389,9 @@ given exprInterpreter[Env, V](using
                 }
                 case IOPrint(e: Expr) :: remainder => {
                   def evalStringPrinter(evaluatedValue: Val): Unit = {
-                    evaluatedValue match {
+                    val middle = resolveVIOThunk(evaluatedValue)
+                    val resolvedValue = middle.evaluate
+                    resolvedValue match {
                       case VNil                         => printString("Nil")
                       case VInt(value)                  => printString(value.toString)
                       case VFloat(value)                => printString(value.toString)
@@ -392,6 +403,7 @@ given exprInterpreter[Env, V](using
                         evalStringPrinter(tail)
                         printString(")")
                       }
+                      case _ => throw new Error("unexpected print value")
                     }
                   }
                   evalStringPrinter(eval(env, e).evaluate);
@@ -408,7 +420,8 @@ given exprInterpreter[Env, V](using
               }
               val newEnv = registerArgs(action.env, action.params zip args)
               val finalEnv = runActions(newEnv, action.actions)
-              eval(finalEnv, action.returns)
+              val recursiveEnv = finalEnv.setItem(action.actionName, action.toLazy)
+              eval(recursiveEnv, action.returns)
             }
             Success(innerFunction(action, args))
           }

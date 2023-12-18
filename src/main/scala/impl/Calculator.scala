@@ -7,6 +7,7 @@ val calculator: String =
     |   (val numericStringList (cons "0" (cons "1" (cons "2" (cons "3" (cons "4" (cons "5" (cons "6" (cons "7" (cons "8" (cons "9" nil)))))))))))
     |   (val numericStringMapList (cons 1 (cons 2 (cons 3 (cons 4 (cons 5 (cons 6 (cons 7 (cons 8 (cons 9 (cons 10 nil)))))))))))
     |   (val operatorList (cons "+" (cons "-" (cons "*" (cons "/" nil)))))
+    |   (val crossOperatorList (cons "*" (cons "/" nil)))
     |   (def customOr ( first second )
     |       (if first first second)
     |   )
@@ -55,6 +56,15 @@ val calculator: String =
     |           )
     |       )
     |   )
+    |   (def checkIsCrossOperator ( target )
+    |       (let 
+    |           (val operator (app matchOperator target crossOperatorList))
+    |           ( if ( nil? operator)
+    |               nil
+    |               operator
+    |           )
+    |       )
+    |   )
     |   (def stringToInt ( preValue numericString )
     |       (if ( < (len numericString) 1)
     |           (cons preValue numericString)
@@ -89,7 +99,13 @@ val calculator: String =
     |           ))
     |           (if ( app customOr isFailed ( = (snd result) "parse error"))
     |               "parse error"
-    |               result
+    |               (if (nil? (snd result))
+    |                   (if (nil? (snd (fst result)))
+    |                       result
+    |                       "parse error"
+    |                   )
+    |                   result
+    |               )
     |           )
     |       )
     |   )
@@ -115,15 +131,96 @@ val calculator: String =
     |           result
     |       )
     |   )
-    |   (def crossProcess ( expression )
-    |       nil
+    |   (def calculate ( firstOperand operator secondOperand)
+    |       (if (= operator "+")
+    |           (+ firstOperand secondOperand)
+    |           (if (= operator "-")
+    |               (- firstOperand secondOperand)
+    |               (if (= operator "*")
+    |                   (* firstOperand secondOperand)
+    |                   (/ firstOperand secondOperand)
+    |               )
+    |           )
+    |       )
     |   )
-    |   (def fullProcess ( expression )
-    |       nil
+    |   (def crossProcess ( expression prevValue prevOperator )
+    |       (let
+    |           (val thisOperand (fst (fst expression)))
+    |           (val operator (snd (fst expression)))
+    |           (val matchedOperator (app checkIsCrossOperator operator))
+    |           (val contExpression (snd expression))
+    |           (val preprocessResult (app calculate prevValue prevOperator thisOperand))
+    |           (val result (if (nil? contExpression)
+    |               (cons (cons preprocessResult nil) nil)
+    |               (if (nil? matchedOperator)
+    |                   (cons (cons preprocessResult operator) (app crossProcess contExpression 1 "*"))
+    |                   (app crossProcess contExpression preprocessResult operator)
+    |               )
+    |           ))
+    |           result
+    |       )
+    |   )
+    |   (def addSubProcess ( expression prevValue prevOperator )
+    |       (let
+    |           (val thisOperand (fst (fst expression)))
+    |           (val operator (snd (fst expression)))
+    |           (val contExpression (snd expression))
+    |           (val preprocessResult (app calculate prevValue prevOperator thisOperand))
+    |           (val result (if (nil? contExpression)
+    |               preprocessResult
+    |               (app addSubProcess contExpression preprocessResult operator)
+    |           ))
+    |           result
+    |       )
+    |   )
+    |   (def getCalculationResult ( line )
+    |       (let
+    |           (val expression (app splitNumericAndOperator line))
+    |           (val processedValue (if (nil? expression)
+    |               "parse error"
+    |               nil
+    |           ))
+    |           processedValue
+    |       )
     |   )
     |   (val exitString "exit")
     |   (val invokeCheck "sibal\n")
     |   (defIO runCycle ()
+    |       (readline inputString)
+    |       (runIO result (if (= inputString exitString)
+    |           0
+    |           1
+    |       ))
+    |       (runIO printValue (if result 
+    |           (app splitNumericAndOperator inputString)
+    |           ""
+    |       ))
+    |       (runIO crossProcessed (if result 
+    |           (app crossProcess printValue 1 "*" )
+    |           ""
+    |       ))
+    |       (runIO addSubProcessed (if result 
+    |           (app addSubProcess crossProcessed 0 "+" )
+    |           ""
+    |       ))
+    |       (print addSubProcessed)
+    |       (print (if result "\n" ""))
+    |       result
+    |   )
+    |   (defIO printRunCycle ()
+    |       (runIO result (app runCycle))
+    |       (runIO nextResult (if result
+    |           (app printRunCycle)
+    |           result
+    |       ))
+    |       nextResult
+    |   )
+    |   (app printRunCycle)
+    |)
+    |""".stripMargin
+
+    /*
+        stringToInt 최적화할 것.
     |       (readline inputString)
     |       (print inputString)
     |       (print "\n")
@@ -135,20 +232,5 @@ val calculator: String =
     |       (print "\n")
     |       (print (app splitNumericAndOperator inputString))
     |       (print "\n")
-    |       (if (= inputString exitString)
-    |           nil
-    |           (app runCycle)
-    |       )
-    |   )
-    |   (defIO printRunCycleResult ()
-    |       (print (app runCycle))
-    |       nil
-    |   )
-    |  (app printRunCycleResult)
-    |)
-    |""".stripMargin
-
-    /*
-        stringToInt 최적화할 것.
     
     */
