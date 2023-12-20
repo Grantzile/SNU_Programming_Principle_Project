@@ -16,21 +16,21 @@ given Reader[IOType] with
           None
         }
         case _ => {
-          def removeRemainingEndlines(dummy: DummyIO): Unit = {
-            for (_ <- 0 until dummy.input.length) {
-              if (dummy.input.nonEmpty && (dummy.input.head == '\n' || dummy.input.head == '\r')) {
-                dummy.input = dummy.input.tail
-              } else {
-                return
-              }
-            }
-          }
+          // def removeRemainingEndlines(dummy: DummyIO): Unit = {
+          //   for (_ <- 0 until dummy.input.length) {
+          //     if (dummy.input.nonEmpty && (dummy.input.head == '\n' || dummy.input.head == '\r')) {
+          //       dummy.input = dummy.input.tail
+          //     } else {
+          //       return
+          //     }
+          //   }
+          // }
           val result = dummy.input.head
           dummy.input = dummy.input.tail
-          if (result == '\n' || result == '\r'){
-            // fix this!
-            removeRemainingEndlines(dummy)
-          }
+          // if (result == '\n' || result == '\r'){
+          //   // fix this!
+          //   removeRemainingEndlines(dummy)
+          // }
           Option(result)
         }
       }
