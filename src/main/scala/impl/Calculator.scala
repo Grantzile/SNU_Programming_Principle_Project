@@ -115,11 +115,10 @@ val calculator: String =
     |           (val isNumericValue (app getNumericValue firstChar))
     |           (val sign 1)
     |           (val isAvailableStart (if (nil? isNumericValue) 0 1))
-    |           (val result (if isAvailableStart
+    |           (if isAvailableStart
     |               (app getIntAndContinue line sign splitNumericAndOperator)
     |               "parse error"
-    |           ))
-    |           result
+    |           )
     |       )
     |   )
     |   (def calculate ( firstOperand operator secondOperand)
@@ -141,14 +140,13 @@ val calculator: String =
     |           (val matchedOperator (app checkIsCrossOperator operator))
     |           (val contExpression (snd expression))
     |           (val preprocessResult (app calculate prevValue prevOperator thisOperand))
-    |           (val result (if (nil? contExpression)
+    |           (if (nil? contExpression)
     |               (cons (cons preprocessResult nil) nil)
     |               (if (nil? matchedOperator)
     |                   (cons (cons preprocessResult operator) (app crossProcess contExpression 1 "*"))
     |                   (app crossProcess contExpression preprocessResult operator)
     |               )
-    |           ))
-    |           result
+    |           )
     |       )
     |   )
     |   (def addSubProcess ( expression prevValue prevOperator )
@@ -157,11 +155,10 @@ val calculator: String =
     |           (val operator (snd (fst expression)))
     |           (val contExpression (snd expression))
     |           (val preprocessResult (app calculate prevValue prevOperator thisOperand))
-    |           (val result (if (nil? contExpression)
+    |           (if (nil? contExpression)
     |               preprocessResult
     |               (app addSubProcess contExpression preprocessResult operator)
-    |           ))
-    |           result
+    |           )
     |       )
     |   )
     |   (def getCalculationResult ( line )

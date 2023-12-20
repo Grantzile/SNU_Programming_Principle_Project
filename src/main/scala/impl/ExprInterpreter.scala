@@ -217,7 +217,8 @@ given exprInterpreter[Env, V](using
           case (VFloat(leftValue), VInt(rightValue)) => lazyOps.toLazy(VFloat(leftValue + rightValue))
           case (VFloat(leftValue), VFloat(rightValue)) => lazyOps.toLazy(VFloat(leftValue + rightValue))
           case (VString(leftValue), VString(rightValue)) => lazyOps.toLazy(VString(leftValue + rightValue))
-          case remaining => throw new Exception("EAdd type error")
+          case remaining => {println(remaining)
+            throw new Exception("EAdd type error")}
         }
       }
       case ESub(left, right) => {
@@ -322,23 +323,46 @@ given exprInterpreter[Env, V](using
           case VIOThunk[Env](action, args) =>
           {
             def innerFunction(action: VIOAction[Env], args: List[Val]): V = {
-              def fetchLine(): Option[String] = {
+              @tailrec
+              def newFetchLine(contString: Option[String]): Option[String] = {
                 readOps.readChar(reader)() match {
                   case Some(value) => {
                   // what about "\r\n"?
                     if (value == '\r' || value == '\n'){
-                      None;
+                      contString
                     }
                     else {
-                      val tails = fetchLine() match {
-                        case Some(tailString) => tailString
-                        case None => ""
+                      contString match {
+                        case Some(cont) => {
+                          newFetchLine(Option(cont + value.toString))
+                        }
+                        case None => {
+                          newFetchLine(Option(value.toString))
+                        }
                       }
-                      Option(value.toString + tails)
                     }
                   }
-                  case None => None
+                  case None => contString
                 }
+              }
+              def fetchLine(): Option[String] = {
+                newFetchLine(None)
+                // readOps.readChar(reader)() match {
+                //   case Some(value) => {
+                //   // what about "\r\n"?
+                //     if (value == '\r' || value == '\n'){
+                //       None;
+                //     }
+                //     else {
+                //       val tails = fetchLine() match {
+                //         case Some(tailString) => tailString
+                //         case None => ""
+                //       }
+                //       Option(value.toString + tails)
+                //     }
+                //   }
+                //   case None => None
+                // }
               }
 
               @tailrec
@@ -382,7 +406,7 @@ given exprInterpreter[Env, V](using
                       runActions(newEnv, remainder);
                     }
                     case None =>  {
-                      val newEnv = env.setItem(x, VNil.toLazy);
+                      val newEnv = env.setItem(x, VString("").toLazy);
                       runActions(newEnv, remainder);
                     } // throw new Error("Empty Line Input");
                   }
