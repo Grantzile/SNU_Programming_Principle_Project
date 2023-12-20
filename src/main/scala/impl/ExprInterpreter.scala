@@ -25,7 +25,6 @@ given exprInterpreter[Env, V](using
       case EString(value) => lazyOps.toLazy(VString(value))
       case EName(x) => env.findItem(x) match {
         case Some(value) => {
-          // println(s"find item, ${value.evaluate} with name ${x}\n")
           value
         }
         case None => throw new Exception("name not founded")
@@ -100,7 +99,9 @@ given exprInterpreter[Env, V](using
       case ELen(expr: Expr) => {
         def consCounter(cons: Val, counter: Int): Int = cons match {
           case VCons(head, tail) => {
-            consCounter(tail, counter + 1)
+            val headLen = consCounter(head, counter + 1)
+            val tailLen = consCounter(tail, counter + 1)
+            headLen.max(tailLen)
           }
           case _ => counter
         }
