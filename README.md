@@ -1,6 +1,6 @@
 # Programming principle 과목 프로젝트 아카이브.
 
-- 백업용
+- lazy eval을 포함한 언어 만들기.
 
 # Principles of Programming Assignment: Project
 
